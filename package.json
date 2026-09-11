@@ -1,0 +1,36 @@
+{
+  "name": "linkedin-pilot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Servidor MCP + CLI para gestionar LinkedIn de punta a punta: perfil, interacciones y postulaciones.",
+  "bin": {
+    "linkedin-pilot": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "start": "node dist/index.js",
+    "login": "node dist/cli.js login",
+    "doctor": "node dist/cli.js doctor",
+    "test": "npm run build && node scripts/test-matching.mjs && node scripts/smoke.mjs",
+    "test:matching": "node scripts/test-matching.mjs",
+    "test:mcp": "node scripts/smoke.mjs",
+    "test:forms": "node scripts/test-forms.mjs",
+    "test:live": "node scripts/validar-live.mjs",
+    "postinstall": "node -e \"process.exit(0)\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "playwright": "^1.49.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

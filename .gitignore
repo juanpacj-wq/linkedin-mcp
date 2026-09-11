@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.log
+
+# Nunca versionar sesión ni datos personales
+browser-profile/
+cookies*.json
+state.json
+answers.json
+screenshots/
+documents/
+downloads/
+.env
