@@ -550,7 +550,10 @@ export async function fillField(
         await locator.click();
         await page.keyboard.press("Control+A");
         await page.keyboard.press("Delete");
-        await locator.type(rawValue, { delay: 12 });
+        // Los editores ProseMirror (titular, Acerca de) procesan cada tecla con
+        // lentitud: escribir letra a letra pasa el tiempo límite con textos largos.
+        // insertText entra como un solo evento de entrada, igual que pegar.
+        await page.keyboard.insertText(rawValue);
         break;
       }
 

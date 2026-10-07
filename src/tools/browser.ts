@@ -112,8 +112,16 @@ export async function typeInto(ref: string, text: string, submit = false): Promi
   const page = await getPage();
   const locator = page.locator(`[data-lp-ref="${ref}"]`).first();
   await locator.click({ timeout: 15_000 });
-  await locator.fill("");
-  await locator.type(text, { delay: 25 });
+  const editable = await locator.evaluate((el) => (el as HTMLElement).isContentEditable);
+  if (editable) {
+    // ProseMirror: letra a letra se pasa del tiempo límite; se inserta de una vez.
+    await page.keyboard.press("Control+A");
+    await page.keyboard.press("Delete");
+    await page.keyboard.insertText(text);
+  } else {
+    await locator.fill("");
+    await locator.type(text, { delay: 25 });
+  }
   if (submit) await locator.press("Enter");
   await pause(page, 900, 1_800);
   return snapshotPage();
