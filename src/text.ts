@@ -140,3 +140,45 @@ export function bestScore(a: string, b: string): number {
   }
   return score;
 }
+
+/** Palabras de relleno de las preguntas, en español e inglés. */
+const QUESTION_STOPWORDS = new Set([
+  "the", "and", "for", "you", "your", "are", "have", "has", "with", "how", "many",
+  "much", "what", "which", "does", "did", "can", "will", "would", "now", "future",
+  "this", "that", "any", "our", "from", "into", "currently",
+  "que", "cual", "cuales", "cuantos", "cuantas", "tienes", "tiene", "tus", "con",
+  "para", "por", "del", "los", "las", "una", "uno", "estas", "esta", "eres", "hay",
+  "como", "sobre", "puedes", "podrias", "nos", "mas", "actualmente",
+]);
+
+/** Palabras que dicen de qué trata la pregunta, sin relleno ni términos del glosario. */
+function subjectWords(norm: string, ignore: Set<string>): Set<string> {
+  return new Set(
+    norm.split(" ").filter((w) => w.length > 2 && !QUESTION_STOPWORDS.has(w) && !ignore.has(w)),
+  );
+}
+
+/**
+ * ¿Preguntan por cosas distintas? Pasa cuando cada etiqueta nombra algo que
+ * la otra no: "experiencia con Java" frente a "experiencia con Python", o
+ * "trabajar en Canadá" frente a "trabajar en Colombia". El glosario las hace
+ * parecer la misma pregunta, pero reutilizar la respuesta sería contestar en
+ * falso. Si solo una de las dos tiene palabras de más, es otra redacción.
+ */
+export function asksDifferentThing(a: string, b: string): boolean {
+  const normA = normalizeLabel(a);
+  const normB = normalizeLabel(b);
+  const formsA = expandLabel(a);
+  const formsB = expandLabel(b);
+  const glossary = new Set<string>();
+  for (const group of FIELD_SYNONYMS) {
+    if (group.some((t) => formsA.has(t)) && group.some((t) => formsB.has(t))) {
+      for (const term of group) for (const w of term.split(" ")) glossary.add(w);
+    }
+  }
+  const wordsA = subjectWords(normA, glossary);
+  const wordsB = subjectWords(normB, glossary);
+  const onlyA = [...wordsA].some((w) => !wordsB.has(w));
+  const onlyB = [...wordsB].some((w) => !wordsA.has(w));
+  return onlyA && onlyB;
+}

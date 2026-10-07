@@ -118,6 +118,43 @@ check(
   String(lookupAnswer("¿Tienes licencia de conducción?", bank)),
 );
 
+console.log("\n== Banco de respuestas no contesta en falso ==");
+const bilingual = {
+  profile: {},
+  answers: {
+    "how many years of experience do you have with python": "2",
+    "cuantos anos de experiencia tienes con python": "2",
+    "are you legally authorized to work in colombia": "Yes",
+    "cual es tu aspiracion salarial mensual": "8000000",
+    "what is your expected monthly salary": "2500",
+    "what is your notice period": "2 to 3 weeks",
+  },
+};
+const none = (q) => check(`sin respuesta: ${q}`, lookupAnswer(q, bilingual) === undefined, String(lookupAnswer(q, bilingual)));
+none("How many years of experience do you have with Java?");
+none("¿Cuántos años de experiencia tienes con Angular?");
+none("Years of experience with AWS");
+none("Are you legally authorized to work in Canada?");
+check(
+  "otra redacción, misma tecnología",
+  lookupAnswer("Years of experience with Python", bilingual) === "2",
+);
+check(
+  "mismo país, otra redacción",
+  lookupAnswer("Are you authorized to work in Colombia?", bilingual) === "Yes",
+);
+check(
+  "salario en inglés toma la respuesta en inglés",
+  lookupAnswer("What is your expected salary?", bilingual) === "2500",
+  String(lookupAnswer("What is your expected salary?", bilingual)),
+);
+check(
+  "salario en español toma la respuesta en español",
+  lookupAnswer("Aspiración salarial", bilingual) === "8000000",
+  String(lookupAnswer("Aspiración salarial", bilingual)),
+);
+check("preaviso abreviado", lookupAnswer("Notice period", bilingual) === "2 to 3 weeks");
+
 console.log("\n== Puntuación ==");
 check("idénticas puntúan 1", bestScore("Titular", "Titular") === 1);
 check("equivalentes puntúan 1", bestScore("Titular", "Headline") === 1);

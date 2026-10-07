@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { PATHS, DAILY_LIMITS, ensureDirs, type LimitKey } from "../config.js";
 import { log } from "../logger.js";
-import { normalizeLabel, bestScore } from "../text.js";
+import { normalizeLabel, bestScore, overlapScore, asksDifferentThing } from "../text.js";
 
 export { normalizeLabel };
 
@@ -197,10 +197,16 @@ export function lookupAnswer(label: string, bank = readAnswerBank()): string | u
   if (direct !== undefined) return direct;
 
   // Las empresas redactan la misma pregunta de mil formas, y en dos idiomas.
-  let best: { value: string; score: number } | undefined;
+  // Si la pregunta nombra otra tecnología u otro país, mejor dejarla sin
+  // responder que contestar en falso. Al elegir también pesa cuánto se parece
+  // la redacción literal, para que una pregunta en inglés tome la respuesta
+  // guardada en inglés (USD) y no la de español (COP).
+  let best: { value: string; rank: number } | undefined;
   for (const [candidate, value] of Object.entries(bank.answers)) {
     const score = bestScore(label, candidate);
-    if (score >= 0.6 && (!best || score > best.score)) best = { value, score };
+    if (score < 0.6 || asksDifferentThing(label, candidate)) continue;
+    const rank = score + overlapScore(key, candidate);
+    if (!best || rank > best.rank) best = { value, rank };
   }
   return best?.value;
 }
