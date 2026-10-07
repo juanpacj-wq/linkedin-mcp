@@ -9,7 +9,7 @@ import { snapshotPage } from "../dist/tools/browser.js";
 
 let failures = 0;
 const check = (label, cond, extra = "") => {
-  console.log(`${cond ? "OK  " : "FALLA"} ${label}${extra ? ` — ${extra}` : ""}`);
+  console.log(`${cond ? "OK  " : "FALLA"} ${label}${extra ? `: ${extra}` : ""}`);
   if (!cond) failures++;
 };
 

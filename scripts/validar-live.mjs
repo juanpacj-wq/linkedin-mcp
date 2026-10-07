@@ -9,7 +9,7 @@ import { closeBrowser, getPage } from "../dist/browser/session.js";
 
 let fallos = 0;
 const check = (label, cond, extra = "") => {
-  console.log(`${cond ? "OK  " : "FALLA"} ${label}${extra ? ` — ${extra}` : ""}`);
+  console.log(`${cond ? "OK  " : "FALLA"} ${label}${extra ? `: ${extra}` : ""}`);
   if (!cond) fallos++;
 };
 
@@ -55,7 +55,7 @@ try {
   });
   check("búsqueda de empleos devuelve resultados", jobs.length > 0, `${jobs.length} ofertas`);
   for (const j of jobs.slice(0, 5)) {
-    console.log(`      · [${j.jobId}] ${j.title} — ${j.company} — ${j.location}${j.easyApply ? " (solicitud sencilla)" : ""}`);
+    console.log(`      · [${j.jobId}] ${j.title} | ${j.company} | ${j.location}${j.easyApply ? " (solicitud sencilla)" : ""}`);
   }
   const primera = jobs[0];
   if (primera) {
@@ -63,7 +63,7 @@ try {
     check(
       "detalle de oferta trae título, empresa y descripción",
       !!d.title && !!d.company && d.description.length > 100,
-      `${d.title} — ${d.company} — descripción ${d.description.length} car. — easyApply=${d.easyApply}`,
+      `${d.title} | ${d.company} | descripción ${d.description.length} car. | easyApply=${d.easyApply}`,
     );
   }
 } catch (err) {
@@ -74,7 +74,7 @@ console.log("\n=== PERSONAS ===\n");
 try {
   const people = await searchPeople({ keywords: "reclutador datos Colombia", limit: 5 });
   check("búsqueda de personas devuelve resultados", people.length > 0, `${people.length} perfiles`);
-  for (const p of people.slice(0, 3)) console.log(`      · ${p.name} — ${p.headline.slice(0, 70)}`);
+  for (const p of people.slice(0, 3)) console.log(`      · ${p.name} | ${p.headline.slice(0, 70)}`);
 } catch (err) {
   check("búsqueda de personas", false, err.message.slice(0, 200));
 }

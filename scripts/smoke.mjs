@@ -27,7 +27,7 @@ let failures = 0;
 function check(label, condition, extra = "") {
   const mark = condition ? "OK  " : "FALLA";
   if (!condition) failures++;
-  console.log(`${mark} ${label}${extra ? ` — ${extra}` : ""}`);
+  console.log(`${mark} ${label}${extra ? `: ${extra}` : ""}`);
 }
 
 try {

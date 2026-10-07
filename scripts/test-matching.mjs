@@ -9,7 +9,7 @@ import { lookupAnswer } from "../dist/state/store.js";
 
 let failures = 0;
 function check(label, cond, extra = "") {
-  console.log(`${cond ? "OK  " : "FALLA"} ${label}${extra ? ` — ${extra}` : ""}`);
+  console.log(`${cond ? "OK  " : "FALLA"} ${label}${extra ? `: ${extra}` : ""}`);
   if (!cond) failures++;
 }
 

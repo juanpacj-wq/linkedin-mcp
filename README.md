@@ -3,13 +3,13 @@
 Servidor **MCP** (y CLI) que controla LinkedIn con tu sesión real, en un navegador
 persistente. Cubre las tres cosas de punta a punta:
 
-1. **Actualizar tu perfil completo** — titular, acerca de, experiencia, educación,
+1. **Actualizar tu perfil completo**: titular, acerca de, experiencia, educación,
    aptitudes, certificaciones, proyectos, idiomas, foto, portada, información de
    contacto, URL personalizada y "Abierto a trabajar".
-2. **Interactuar con otros perfiles** — buscar personas, invitar a conectar con
+2. **Interactuar con otros perfiles**: buscar personas, invitar a conectar con
    nota, enviar mensajes, seguir, validar aptitudes, gestionar invitaciones,
    reaccionar y comentar publicaciones, publicar en el feed.
-3. **Postular a ofertas de empleo** — buscar con todos los filtros de LinkedIn,
+3. **Postular a ofertas de empleo**: buscar con todos los filtros de LinkedIn,
    leer el detalle y completar la Solicitud sencilla (Easy Apply) paso a paso.
 
 ---
@@ -35,11 +35,11 @@ lento.
 
 Por eso el proyecto usa dos vías:
 
-- **Para leer** — la API interna (Voyager), que devuelve el perfil completo y
+- **Para leer**: la API interna (Voyager), que devuelve el perfil completo y
   el detalle de una oferta en una sola llamada, estructurados. Se aprovecha la
   sesión del propio navegador, así que las peticiones salen con las mismas
   cookies, el mismo user-agent y la misma IP que la navegación real.
-- **Para escribir** — la interfaz, porque no hay otra: no existe endpoint para
+- **Para escribir**: la interfaz, porque no hay otra: no existe endpoint para
   guardar tu experiencia ni para postular.
 
 Cuando una vía falla se cae a la otra, y ambas quedan reportadas.
@@ -47,8 +47,8 @@ Cuando una vía falla se cae a la otra, y ambas quedan reportadas.
 ### Tres decisiones sostienen lo demás
 
 - **Sesión persistente, login manual.** El navegador guarda su perfil en disco,
-  así que inicias sesión una sola vez —con verificación en dos pasos y captcha
-  incluidos— y las cookies sobreviven entre ejecuciones. No se automatiza el
+  así que inicias sesión una sola vez (con verificación en dos pasos y captcha
+  incluidos) y las cookies sobreviven entre ejecuciones. No se automatiza el
   login a propósito: automatizarlo es justo lo que dispara los bloqueos, y
   además obligaría a guardar tu contraseña en algún lado.
 
@@ -234,7 +234,7 @@ captura. Se las pasas y vuelve a intentar:
 ```
 
 Las respuestas quedan guardadas en el banco, así que la siguiente oferta que
-pregunte lo mismo —aunque lo redacte distinto o en otro idioma— ya no se
+pregunte lo mismo (aunque lo redacte distinto o en otro idioma) ya no se
 atasca. Cuanto más completo el banco, menos intervención necesitas.
 
 Detalles que importan:

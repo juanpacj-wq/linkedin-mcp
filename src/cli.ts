@@ -16,7 +16,7 @@ function print(value: unknown): void {
 }
 
 const HELP = `
-linkedin-pilot — control de LinkedIn desde la terminal
+linkedin-pilot: control de LinkedIn desde la terminal
 
   login                     Abre el navegador para iniciar sesión a mano (una sola vez).
   status                    Muestra si la sesión está viva y el consumo del día.

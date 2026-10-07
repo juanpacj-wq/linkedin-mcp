@@ -242,7 +242,7 @@ export async function getJobDetail(jobIdOrUrl: string): Promise<JobDetail> {
   const jobId = extractJobId(jobIdOrUrl);
 
   // Vía principal: la API interna. Devuelve título, descripción completa y,
-  // sobre todo, si la oferta admite Solicitud sencilla — algo que el HTML
+  // sobre todo, si la oferta admite Solicitud sencilla, algo que el HTML
   // renderizado con SDUI ya no dice de forma fiable.
   try {
     const viaApi = await readJobViaVoyager(jobId);
@@ -645,7 +645,7 @@ export async function applyToJob(
         questionsAnswered: answeredThisRun,
       };
       recordApplication(record);
-      commitOutbound("applications", { target: `${detail.title} — ${detail.company}` });
+      commitOutbound("applications", { target: `${detail.title} | ${detail.company}` });
       log.info("solicitud enviada", { jobId, title: detail.title });
 
       return {
