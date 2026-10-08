@@ -368,6 +368,9 @@ const REVIEW_LABELS = /^(revisar|review|revisar solicitud)$/i;
 const SUBMIT_LABELS = /^(enviar solicitud|enviar|submit application|submit)$/i;
 
 function isAnswered(field: FieldDescriptor): boolean {
+  // Un desplegable sin elegir muestra su texto de relleno ("Mes", "Año") como
+  // valor; si LinkedIn ya lo marcó como obligatorio, no está respondido.
+  if (field.error) return false;
   if (field.kind === "checkbox") return true; // opcional salvo que sea obligatorio marcado
   return field.value.trim() !== "";
 }
@@ -539,17 +542,6 @@ export async function applyToJob(
     };
   }
 
-  if (!detail.easyApply) {
-    return {
-      ...baseResult,
-      status: "external",
-      detail:
-        "Esta oferta no usa Solicitud sencilla: se postula en el sitio de la empresa" +
-        (detail.externalApplyUrl ? ` (${detail.externalApplyUrl})` : "") +
-        ". No se puede completar desde LinkedIn.",
-    };
-  }
-
   const bank = readAnswerBank();
   const resume =
     (options.resumePath ? resolveDocument(options.resumePath) : undefined) ??
@@ -566,7 +558,20 @@ export async function applyToJob(
     await pause(page, 2_500, 3_800);
   }
 
+  // La API a veces dice que la oferta no es Solicitud sencilla cuando la
+  // página sí muestra el botón. Manda lo que se ve: solo si el botón no está
+  // se trata como oferta externa.
   const opened = await clickButton(page, /solicitud sencilla|easy apply/i, "main");
+  if (!opened && !detail.easyApply) {
+    return {
+      ...baseResult,
+      status: "external",
+      detail:
+        "Esta oferta no usa Solicitud sencilla: se postula en el sitio de la empresa" +
+        (detail.externalApplyUrl ? ` (${detail.externalApplyUrl})` : "") +
+        ". No se puede completar desde LinkedIn.",
+    };
+  }
   if (!opened) {
     const shot = await screenshot(`apply-${jobId}-sin-boton`);
     return {
@@ -644,9 +649,11 @@ export async function applyToJob(
 
       const decision = decideValue(field, explicit, resume);
       if (!decision) {
-        if (field.required) {
+        // Hay obligatorios sin asterisco (los mes/año de las fechas de estudio):
+        // LinkedIn solo lo dice con el error "Este campo es obligatorio".
+        if (field.required || field.error) {
           report.unanswered.push({
-            label: field.label,
+            label: field.label || `(sin etiqueta) ${field.value}`.trim(),
             kind: field.kind,
             required: true,
             ...(field.options ? { options: field.options } : {}),
