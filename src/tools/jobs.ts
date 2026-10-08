@@ -1,5 +1,6 @@
+import path from "node:path";
 import type { Page } from "playwright";
-import { LINKEDIN } from "../config.js";
+import { CONFIG, LINKEDIN } from "../config.js";
 import { getPage, ensureLoggedIn, screenshot } from "../browser/session.js";
 import {
   clickButton,
@@ -409,6 +410,103 @@ async function closeApplyModal(page: Page): Promise<void> {
   await page.keyboard.press("Escape").catch(() => undefined);
 }
 
+const UPLOAD_RESUME_LABELS = /^(cargar|subir) curr[ií]culum$|^upload resume$/i;
+const FOLLOW_COMPANY_LABEL = /\bsigue\b|\bseguir\b|\bfollow\b/i;
+
+/** Ámbito donde buscar dentro del paso actual; si no existe, toda la página. */
+async function stepRoot(page: Page, scope: string) {
+  const scoped = page.locator(scope);
+  return (await scoped.count().catch(() => 0)) > 0 ? scoped.last() : page.locator("body");
+}
+
+/**
+ * Sube el CV en el paso "Currículum" de la Solicitud sencilla.
+ *
+ * LinkedIn no deja un `<input type="file">` en la página: el botón "Cargar
+ * currículum" lo crea al pulsarlo y abre el selector de archivos del sistema.
+ * Por eso se espera el evento `filechooser`. El CV recién subido queda
+ * seleccionado, pero LinkedIn solo lo guarda en la cuenta si la solicitud se
+ * envía: al descartarla desaparece. Por eso se sube en cada postulación en vez
+ * de buscar uno cargado antes.
+ *
+ * Devuelve `undefined` si este paso no es el del CV.
+ */
+async function uploadResume(
+  page: Page,
+  scope: string,
+  resumePath: string,
+): Promise<{ ok: boolean; name: string; detail?: string } | undefined> {
+  const root = await stepRoot(page, scope);
+  const button = root.getByRole("button", { name: UPLOAD_RESUME_LABELS }).first();
+  if (!(await button.isVisible().catch(() => false))) return undefined;
+
+  const name = path.basename(resumePath);
+  try {
+    const [chooser] = await Promise.all([
+      page.waitForEvent("filechooser", { timeout: CONFIG.actionTimeout }),
+      button.click({ timeout: CONFIG.actionTimeout }),
+    ]);
+    await chooser.setFiles(resumePath);
+  } catch (err) {
+    return { ok: false, name, detail: `No se abrió el selector de archivos: ${String(err)}` };
+  }
+
+  // La tarjeta del archivo aparece arriba de la lista cuando termina la subida.
+  const card = root.getByRole("button").filter({ hasText: name }).first();
+  const appeared = await card
+    .waitFor({ state: "visible", timeout: 30_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!appeared) {
+    const errors = await describeForm(page, scope).then((s) => s.errors).catch(() => []);
+    return {
+      ok: false,
+      name,
+      detail: `LinkedIn no mostró "${name}" tras subirlo${errors.length ? `: ${errors.join(" | ")}` : ""}.`,
+    };
+  }
+  await pause(page, 900, 1_600);
+  return { ok: true, name };
+}
+
+/**
+ * Deja la casilla "Sigue a <empresa>" como se pidió. Está en la pantalla de
+ * revisión y su input es invisible (se pinta una casilla propia encima), así
+ * que `describeForm` no la lista. Devuelve el estado final, o `undefined` si
+ * no hay casilla.
+ */
+async function setFollowCompany(page: Page, scope: string, want: boolean): Promise<boolean | undefined> {
+  const root = await stepRoot(page, scope);
+  const box = root.getByRole("checkbox", { name: FOLLOW_COMPANY_LABEL, includeHidden: true }).first();
+  if ((await box.count().catch(() => 0)) === 0) return undefined;
+  if ((await box.isChecked().catch(() => want)) !== want) {
+    await box.setChecked(want, { force: true }).catch(async () => {
+      // Si el input no acepta el clic, se pulsa su etiqueta visible.
+      await root.getByText(FOLLOW_COMPANY_LABEL).first().click().catch(() => undefined);
+    });
+    await pause(page, 400, 900);
+  }
+  return box.isChecked().catch(() => undefined);
+}
+
+/**
+ * En la pantalla de revisión, comprueba qué CV va adjunto. Si la solicitud
+ * tiene sección de currículum y no nombra el archivo pedido, no se envía.
+ */
+async function reviewedResumeMismatch(
+  page: Page,
+  scope: string,
+  resumeName: string,
+): Promise<string | undefined> {
+  const root = await stepRoot(page, scope);
+  const text = (await root.innerText().catch(() => "")).replace(/\s+/g, " ");
+  const section = text.match(/(curr[ií]culum|resume)\b(.{0,400})/i);
+  if (!section) return undefined;
+  if (text.includes(resumeName)) return undefined;
+  const shown = section[2]?.match(/[\w.-]+\.(pdf|docx?)/i)?.[0];
+  return `La revisión muestra ${shown ? `"${shown}"` : "otro CV"} y no "${resumeName}".`;
+}
+
 export async function applyToJob(
   jobIdOrUrl: string,
   options: ApplyOptions = {},
@@ -482,6 +580,10 @@ export async function applyToJob(
 
   const maxSteps = options.maxSteps ?? 12;
   const answeredThisRun: Record<string, string> = {};
+  /** Nombre del CV subido en esta postulación, para verificarlo en la revisión. */
+  let attachedResume: string | undefined;
+  /** Huella del paso anterior: si se repite sin cambios, el asistente no avanza. */
+  let lastSignature = "";
 
   for (let step = 1; step <= maxSteps; step++) {
     const scope = await defaultScope(page);
@@ -495,18 +597,50 @@ export async function applyToJob(
       errors: snapshot.errors,
     };
 
+    // Paso del CV: se sube el pedido aunque LinkedIn ya traiga otro marcado.
+    if (resume && !attachedResume) {
+      const upload = await uploadResume(page, scope, resume);
+      if (upload?.ok) {
+        attachedResume = upload.name;
+        report.filled.push({ label: "Currículum", value: resume, source: "cv" });
+      } else if (upload) {
+        report.unanswered.push({
+          label: "Currículum",
+          kind: "file",
+          required: true,
+          ...(upload.detail ? { hint: upload.detail } : {}),
+        });
+      }
+    }
+
     for (const field of snapshot.fields) {
       if (field.disabled) continue;
 
       // "Seguir a la empresa" viene marcado por defecto: se respeta la preferencia.
-      if (field.kind === "checkbox" && /seguir|follow/i.test(field.label)) {
+      // La etiqueta real es "Sigue a <empresa> para enterarte...".
+      if (field.kind === "checkbox" && FOLLOW_COMPANY_LABEL.test(field.label)) {
         const want = options.followCompany === true;
         const isOn = field.value === "true";
         if (want !== isOn) await fillField(page, field, want ? "true" : "false");
         continue;
       }
 
-      if (isAnswered(field) && field.kind !== "file") continue;
+      if (isAnswered(field) && field.kind !== "file") {
+        // Un desplegable que LinkedIn trae ya elegido (el correo, por ejemplo)
+        // se corrige si hay una respuesta explícita distinta. Las aprendidas
+        // del banco no pisan lo que ya está.
+        if (field.kind !== "select") continue;
+        const wanted = decideValue(field, explicit, undefined);
+        if (!wanted || wanted.source !== "explícita") continue;
+        if (wanted.value.trim().toLowerCase() === field.value.trim().toLowerCase()) continue;
+        const result = await fillField(page, field, wanted.value);
+        if (result.status === "filled") {
+          report.filled.push({ label: field.label, value: wanted.value, source: "explícita" });
+        } else {
+          report.errors.push(`No se pudo cambiar "${field.label}" a "${wanted.value}": ${result.detail ?? ""}`);
+        }
+        continue;
+      }
 
       const decision = decideValue(field, explicit, resume);
       if (!decision) {
@@ -534,6 +668,7 @@ export async function applyToJob(
         if (decision.source === "explícita" && field.kind !== "file") {
           answeredThisRun[field.label] = decision.value;
         }
+        if (decision.source === "cv") attachedResume = path.basename(decision.value);
       } else {
         report.unanswered.push({
           label: field.label,
@@ -546,6 +681,32 @@ export async function applyToJob(
     }
 
     baseResult.steps.push(report);
+
+    // Si se pulsó Siguiente y el paso es el mismo, LinkedIn rechazó algo que
+    // la herramienta no ve (una pregunta con un control que no reconoce).
+    // Seguir pulsando solo gasta pasos: se para y se muestra la captura.
+    const signature = [
+      snapshot.progress ?? "",
+      ...snapshot.fields.map((f) => `${f.label}=${f.value}`),
+      ...snapshot.buttons.map((b) => b.label),
+    ].join("|");
+    if (signature === lastSignature && report.filled.length === 0) {
+      const shot = await screenshot(`apply-${jobId}-atascado`);
+      const root = await stepRoot(page, scope);
+      const pageText = (await root.innerText().catch(() => "")).replace(/\s+/g, " ");
+      const required = pageText.match(/[^.?!]{0,160}\?\*?\s*(?:\S+\s+){0,6}?(este campo es obligatorio|this field is required)/gi) ?? [];
+      await closeApplyModal(page);
+      return {
+        ...baseResult,
+        status: "failed",
+        detail:
+          "El asistente no avanza desde este paso: LinkedIn pide algo que la herramienta no reconoce. " +
+          (required.length ? `Pendiente: ${required.join(" | ")}. ` : "") +
+          "Revisa la captura y responde en `answers`.",
+        screenshot: shot,
+      };
+    }
+    lastSignature = signature;
 
     // Si quedan obligatorias sin respuesta, se detiene y se pide ayuda.
     if (report.unanswered.some((u) => u.required)) {
@@ -583,6 +744,30 @@ export async function applyToJob(
     const hasSubmit = buttons.some((b) => SUBMIT_LABELS.test(b.label) && !b.disabled);
 
     if (hasSubmit) {
+      const mismatch = attachedResume
+        ? await reviewedResumeMismatch(page, scope, attachedResume)
+        : undefined;
+      const wantFollow = options.followCompany === true;
+      const following = await setFollowCompany(page, scope, wantFollow);
+      const followProblem =
+        following !== undefined && following !== wantFollow
+          ? `La casilla de seguir a la empresa quedó ${following ? "marcada" : "desmarcada"} y se pidió lo contrario.`
+          : undefined;
+      if (followProblem) report.errors.push(followProblem);
+
+      // En un envío real, cualquiera de las dos cosas detiene la postulación.
+      const blocker = mismatch ?? (dryRun ? undefined : followProblem);
+      if (blocker) {
+        const shot = await screenshot(`apply-${jobId}-revision-bloqueada`);
+        await closeApplyModal(page);
+        return {
+          ...baseResult,
+          status: "failed",
+          detail: `No se envió: ${blocker}`,
+          screenshot: shot,
+        };
+      }
+
       if (dryRun) {
         const shot = await screenshot(`apply-${jobId}-revision`);
         await closeApplyModal(page);

@@ -244,6 +244,17 @@ Detalles que importan:
 - "Seguir a la empresa" viene marcado por defecto en LinkedIn; aquí se
   **desmarca** salvo que pidas `followCompany: true`.
 - Cada postulación queda registrada, así que no repites ofertas.
+- El CV (`resumePath`, o el del banco) se **sube en cada postulación** con el
+  botón "Cargar currículum". LinkedIn solo lo guarda en tu cuenta cuando la
+  solicitud se envía: si se descarta, desaparece, así que no sirve subirlo una
+  vez y luego elegirlo de la lista. En la pantalla de revisión se comprueba
+  que el CV adjunto es el pedido; si no lo es, no se envía.
+- Un desplegable que LinkedIn trae ya elegido (el correo de contacto, por
+  ejemplo) se cambia si el banco tiene un dato explícito distinto. El correo
+  tiene que estar registrado en tu cuenta de LinkedIn para aparecer.
+- Si el asistente no avanza de un paso, se detiene con `status: "failed"`, la
+  pregunta que LinkedIn marca como obligatoria y la captura, en vez de
+  repetir "Siguiente" hasta el límite.
 
 ---
 

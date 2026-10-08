@@ -57,6 +57,14 @@ export async function describeForm(page: Page, scopeSelector?: string): Promise<
     const matches = document.querySelectorAll(rootSelector);
     const root = (matches[matches.length - 1] ?? document.body) as HTMLElement;
 
+    // Las referencias de inspecciones anteriores siguen pegadas a sus
+    // elementos. Si no se borran, una inspección con otro ámbito reparte los
+    // mismos lpN y un mismo ref acaba apuntando a dos controles (el buscador
+    // de LinkedIn y el campo del formulario, por ejemplo).
+    for (const stale of Array.from(document.querySelectorAll("[data-lp-ref]"))) {
+      stale.removeAttribute("data-lp-ref");
+    }
+
     const isVisible = (el: Element): boolean => {
       const he = el as HTMLElement;
       if (!he.getClientRects().length) return false;
@@ -180,6 +188,14 @@ export async function describeForm(page: Page, scopeSelector?: string): Promise<
       if (type === "hidden") continue;
       if (tag === "input" && type === "file") {
         // Los file inputs suelen estar ocultos tras un botón: se incluyen igual.
+      } else if (tag === "input" && (type === "radio" || type === "checkbox")) {
+        // LinkedIn pinta sus propios círculos y casillas y deja el input con
+        // opacidad 0. Cuenta como visible si lo es su etiqueta o su contenedor.
+        const id = el.id ? (window as unknown as { CSS: typeof CSS }).CSS.escape(el.id) : "";
+        const label = (id && document.querySelector(`label[for="${id}"]`)) || el.closest("label");
+        if (!isVisible(el) && !(label && isVisible(label)) && !(el.parentElement && isVisible(el.parentElement))) {
+          continue;
+        }
       } else if (!isVisible(el)) {
         continue;
       }
@@ -212,8 +228,25 @@ export async function describeForm(page: Page, scopeSelector?: string): Promise<
               `input[type="radio"]${input.name ? `[name="${(window as unknown as { CSS: typeof CSS }).CSS.escape(input.name)}"]` : ""}`,
             ),
           );
-          options = siblings.map((r) => labelFor(r)).filter(Boolean);
-          value = siblings.find((r) => r.checked) ? labelFor(siblings.find((r) => r.checked)!) : "";
+          // El texto de cada opción ("Yes", "No") no siempre es su etiqueta:
+          // LinkedIn pone la pregunta entera como aria-label de cada radio y
+          // deja el <label> vacío. Se toma el texto de la fila de la opción.
+          const optionLabel = (r: HTMLInputElement): string => {
+            const rid = r.id ? (window as unknown as { CSS: typeof CSS }).CSS.escape(r.id) : "";
+            const own = textOf((rid && document.querySelector(`label[for="${rid}"]`)) || r.closest("label"));
+            if (own) return own;
+            let best = "";
+            let node: HTMLElement | null = r.parentElement;
+            while (node && node !== root && node.querySelectorAll('input[type="radio"]').length === 1) {
+              const t = textOf(node);
+              if (t) best = t;
+              node = node.parentElement;
+            }
+            return best || labelFor(r);
+          };
+          options = siblings.map((r) => optionLabel(r)).filter(Boolean);
+          const checked = siblings.find((r) => r.checked);
+          value = checked ? optionLabel(checked) : "";
         } else if (type === "checkbox") {
           kind = "checkbox";
           value = input.checked ? "true" : "false";
@@ -252,10 +285,14 @@ export async function describeForm(page: Page, scopeSelector?: string): Promise<
       el.setAttribute("data-lp-ref", ref);
 
       const maxLengthAttr = el.getAttribute("maxlength");
+      // En los grupos de radios el asterisco va en el texto de la pregunta,
+      // fuera de cualquier etiqueta: se busca en el bloque que envuelve al grupo.
+      const radioBlock = kind === "radio" ? el.closest("fieldset")?.parentElement : null;
       const requiredAttr =
         el.hasAttribute("required") ||
         el.getAttribute("aria-required") === "true" ||
-        /\*/.test(label);
+        /\*/.test(label) ||
+        (radioBlock ? /\*/.test(textOf(radioBlock)) : false);
 
       fields.push({
         ref,
@@ -501,8 +538,54 @@ export async function fillField(
             detail: `"${rawValue}" no está entre las opciones: ${(field.options ?? []).join(" | ")}`,
           };
         }
-        // La ruta fiable es marcar el radio por su nombre accesible; si no,
-        // hacer clic sobre la etiqueta visible de la opción.
+        // Primero se busca la opción dentro de su propio grupo (mismo `name`):
+        // con varias preguntas Sí/No en el mismo paso, buscar "Yes" en toda la
+        // página marcaría la de otra pregunta.
+        const groupName = await locator.getAttribute("name").catch(() => null);
+        let checkedInGroup = false;
+        if (groupName) {
+          const siblings = page.locator(`input[type="radio"][name="${groupName.replace(/["\\]/g, "\\$&")}"]`);
+          const total = await siblings.count();
+          for (let i = 0; i < total; i++) {
+            const radio = siblings.nth(i);
+            // Mismo criterio que describeForm: etiqueta propia y, si está
+            // vacía, el texto de la fila que contiene solo esta opción.
+            const text = await radio.evaluate((el) => {
+              const clean = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
+              const id = el.id ? CSS.escape(el.id) : "";
+              const own = clean(((id && document.querySelector(`label[for="${id}"]`)) || el.closest("label"))?.textContent);
+              if (own) return own;
+              let best = "";
+              let node: HTMLElement | null = el.parentElement;
+              while (node && node.querySelectorAll('input[type="radio"]').length === 1) {
+                const t = clean(node.textContent);
+                if (t) best = t;
+                node = node.parentElement;
+              }
+              return best || clean(el.getAttribute("aria-label"));
+            });
+            if (normalizeLabel(text) === normalizeLabel(option)) {
+              // El input real tiene opacidad 0 y a veces queda "fuera de la
+              // vista" para Playwright: se pulsa su <label> y, si no basta, se
+              // le hace clic desde la página.
+              await radio.check({ force: true, timeout: 5_000 }).catch(async () => {
+                const id = await radio.getAttribute("id");
+                if (id) await page.locator(`label[for="${id}"]`).first().click({ timeout: 5_000 }).catch(() => undefined);
+                if (!(await radio.isChecked().catch(() => false))) {
+                  await radio.evaluate((el) => (el as HTMLInputElement).click());
+                }
+              });
+              if (!(await radio.isChecked().catch(() => false))) {
+                throw new Error(`No se pudo marcar "${option}"`);
+              }
+              checkedInGroup = true;
+              break;
+            }
+          }
+        }
+        if (checkedInGroup) break;
+        // Si no, se marca el radio por su nombre accesible o se pulsa la
+        // etiqueta visible de la opción.
         const byRole = page.getByRole("radio", { name: option, exact: false }).first();
         if (await byRole.count()) {
           await byRole.check({ force: true });
