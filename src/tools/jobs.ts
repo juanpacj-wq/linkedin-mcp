@@ -386,7 +386,9 @@ function decideValue(
   let bestExplicit: { value: string; score: number } | undefined;
   for (const [label, value] of Object.entries(explicit)) {
     const score = bestScore(label, field.label);
-    if (score >= 0.6 && (!bestExplicit || score > bestExplicit.score)) {
+    // En empate gana la última: `explicit` lleva primero el perfil del banco
+    // y después las respuestas de esta oferta, que son las más específicas.
+    if (score >= 0.6 && (!bestExplicit || score >= bestExplicit.score)) {
       bestExplicit = { value, score };
     }
   }
@@ -812,12 +814,13 @@ export async function applyToJob(
         };
       }
 
+      // El formulario se cierra al enviar: la confirmación sale en otra capa,
+      // así que se lee la página entera y no el ámbito del formulario.
       const confirmationText = await page
-        .locator(scope)
-        .last()
+        .locator("body")
         .innerText()
         .catch(() => "");
-      const success = /solicitud enviada|se envió|application sent|applied/i.test(confirmationText);
+      const success = /solicitud enviada|se envió|se ha enviado tu solicitud|application (was )?sent|applied/i.test(confirmationText);
 
       const shot = await screenshot(`apply-${jobId}-enviada`);
       await closeApplyModal(page);
