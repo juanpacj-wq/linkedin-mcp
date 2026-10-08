@@ -1,4 +1,4 @@
-import { getPage, ensureLoggedIn, screenshot } from "../browser/session.js";
+import { getPage, screenshot } from "../browser/session.js";
 import { describeForm, defaultScope } from "../browser/forms.js";
 import { pause, humanScroll } from "../browser/humanize.js";
 
@@ -134,7 +134,8 @@ export async function scrollPage(steps = 4): Promise<PageSnapshot> {
 }
 
 export async function capture(name = "manual"): Promise<{ path: string; url: string }> {
-  await ensureLoggedIn().catch(() => undefined);
+  // Sin comprobar la sesión: esa comprobación carga el feed y sacaría la
+  // página del formulario o diálogo que se quiere fotografiar.
   const page = await getPage();
   const path = await screenshot(name);
   return { path, url: page.url() };
