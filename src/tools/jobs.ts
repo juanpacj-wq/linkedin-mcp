@@ -22,7 +22,7 @@ import {
   type ApplicationRecord,
 } from "../state/store.js";
 import { log } from "../logger.js";
-import { bestScore } from "../text.js";
+import { asksDifferentThing, bestScore, normalizeLabel, overlapScore } from "../text.js";
 import { readJobViaVoyager } from "../voyager/jobs.js";
 
 /* ------------------------------------------------------------------ */
@@ -378,18 +378,22 @@ function isAnswered(field: FieldDescriptor): boolean {
 /** Decide con qué valor rellenar un campo, y de dónde sale. */
 function decideValue(
   field: FieldDescriptor,
-  explicit: Record<string, string>,
+  explicit: { profile: Record<string, string>; answers: Record<string, string> },
   resume: string | undefined,
 ): { value: string; source: "explícita" | "banco" | "cv" } | undefined {
-  // 1. Respuesta explícita para esta oferta: gana la etiqueta más parecida,
-  //    no la primera que se parezca un poco.
+  // 1. Respuesta explícita: gana la etiqueta más parecida, no la primera que se
+  //    parezca un poco. Igual que en el banco, se descarta si cada pregunta
+  //    nombra algo que la otra no ("3 años de infraestructura" frente a "2 años
+  //    de desarrollo": el glosario las hace iguales por "años de experiencia").
+  //    En empate gana la respuesta de la oferta sobre el dato del perfil.
   let bestExplicit: { value: string; score: number } | undefined;
-  for (const [label, value] of Object.entries(explicit)) {
-    const score = bestScore(label, field.label);
-    // En empate gana la última: `explicit` lleva primero el perfil del banco
-    // y después las respuestas de esta oferta, que son las más específicas.
-    if (score >= 0.6 && (!bestExplicit || score >= bestExplicit.score)) {
-      bestExplicit = { value, score };
+  const target = normalizeLabel(field.label);
+  for (const entries of [explicit.profile, explicit.answers]) {
+    for (const [label, value] of Object.entries(entries)) {
+      const score = bestScore(label, field.label);
+      if (score < 0.6 || asksDifferentThing(label, field.label)) continue;
+      const rank = score + overlapScore(normalizeLabel(label), target);
+      if (!bestExplicit || rank >= bestExplicit.score) bestExplicit = { value, score: rank };
     }
   }
   if (bestExplicit) return { value: bestExplicit.value, source: "explícita" };
@@ -549,7 +553,7 @@ export async function applyToJob(
     (options.resumePath ? resolveDocument(options.resumePath) : undefined) ??
     (bank.defaultResume ? resolveDocument(bank.defaultResume) : undefined);
 
-  const explicit = { ...bank.profile, ...(options.answers ?? {}) };
+  const explicit = { profile: bank.profile, answers: options.answers ?? {} };
 
   // El detalle viene de la API, que no navega: hay que abrir la oferta antes
   // de buscar el botón de Solicitud sencilla.

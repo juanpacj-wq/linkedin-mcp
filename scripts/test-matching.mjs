@@ -4,7 +4,7 @@
  * postulaciones se atascan. No necesita navegador ni sesión.
  */
 import { matchField, matchOption } from "../dist/browser/forms.js";
-import { normalizeLabel, bestScore } from "../dist/text.js";
+import { normalizeLabel, bestScore, asksDifferentThing } from "../dist/text.js";
 import { lookupAnswer } from "../dist/state/store.js";
 
 let failures = 0;
@@ -135,6 +135,13 @@ none("How many years of experience do you have with Java?");
 none("¿Cuántos años de experiencia tienes con Angular?");
 none("Years of experience with AWS");
 none("Are you legally authorized to work in Canada?");
+check(
+  "dos preguntas de años sobre cosas distintas no se confunden",
+  asksDifferentThing(
+    "¿Cuenta con mínimo 3 años de experiencia en soporte de infraestructura, virtualización, redes y/o actividades relacionadas con infraestructura tecnológica?",
+    "¿Cuenta con 2 años de experiencia en desarrollo de aplicaciones?",
+  ),
+);
 check(
   "otra redacción, misma tecnología",
   lookupAnswer("Years of experience with Python", bilingual) === "2",
